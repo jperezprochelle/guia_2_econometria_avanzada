@@ -1,0 +1,249 @@
+*******************************************************
+* SIMULACIÓN - LALIBERTÉ (2021)
+* 04_descomposicion.do
+*
+* Objetivo:
+* Descomponer el efecto total de exposición al lugar
+* entre:
+*   1. componente escolar
+*   2. componente no escolar del barrio
+*
+* Esta es una versión pedagógica tipo "horse-race".
+*******************************************************
+
+clear all
+set more off
+set seed 2028
+
+
+*******************************************************
+* 1. CREAR MUESTRA DE MOVERS
+*******************************************************
+
+set obs 30000
+
+gen id = _n
+
+
+*******************************************************
+* 2. BARRIOS DE ORIGEN Y DESTINO
+*******************************************************
+
+* 20 barrios posibles
+gen origin = ceil(runiform()*20)
+gen destination = ceil(runiform()*20)
+
+* Evitar movimientos dentro del mismo barrio
+replace destination = mod(destination,20)+1 ///
+    if destination == origin
+
+* Identificador del par origen-destino
+egen od_pair = group(origin destination)
+
+
+*******************************************************
+* 3. EDAD DE MUDANZA Y EXPOSICIÓN
+*******************************************************
+
+* Edad de mudanza entre 7 y 15 años
+gen age_move = floor(7 + 9*runiform())
+
+* Años de exposición al barrio de destino
+gen years_exposure = 16 - age_move
+
+
+*******************************************************
+* 4. CARACTERÍSTICAS INDIVIDUALES
+*******************************************************
+
+gen female = runiform() < 0.5
+gen immigrant = runiform() < 0.20
+
+* Característica familiar no observada
+gen family_ability = rnormal(0,1)
+
+
+*******************************************************
+* 5. CALIDAD ESCOLAR DE ORIGEN Y DESTINO
+*******************************************************
+
+* Componente escolar de cada barrio
+gen school_origin = (origin - 10.5)/5
+gen school_destination = (destination - 10.5)/5
+
+* Cambio en calidad escolar al mudarse
+gen delta_school = ///
+    school_destination - school_origin
+
+
+*******************************************************
+* 6. CALIDAD NO ESCOLAR DEL BARRIO
+*******************************************************
+
+* Construimos un componente diferente al escolar,
+* para que ambos tengan variación independiente.
+
+gen nonschool_origin = ///
+    sin(origin/2) + rnormal(0,0.15)
+
+gen nonschool_destination = ///
+    sin(destination/2) + rnormal(0,0.15)
+
+* Cambio en calidad no escolar
+gen delta_nonschool = ///
+    nonschool_destination - nonschool_origin
+
+
+*******************************************************
+* 7. PARÁMETROS CAUSALES VERDADEROS
+*******************************************************
+
+* Efecto total verdadero:
+* 0.03 escolar + 0.02 no escolar = 0.05
+
+scalar beta_school_true = 0.03
+scalar beta_nonschool_true = 0.02
+scalar beta_total_true = ///
+    beta_school_true + beta_nonschool_true
+
+scalar share_school_true = ///
+    beta_school_true / beta_total_true
+
+scalar share_nonschool_true = ///
+    beta_nonschool_true / beta_total_true
+
+
+*******************************************************
+* 8. EFECTOS ACUMULATIVOS
+*******************************************************
+
+* Componente escolar
+gen school_effect = ///
+    beta_school_true * ///
+    years_exposure * ///
+    delta_school
+
+* Componente no escolar
+gen nonschool_effect = ///
+    beta_nonschool_true * ///
+    years_exposure * ///
+    delta_nonschool
+
+* Efecto contextual total
+gen total_context_effect = ///
+    school_effect + nonschool_effect
+
+
+*******************************************************
+* 9. OUTCOME EDUCACIONAL
+*******************************************************
+
+gen years_education = ///
+      12 ///
+    + 0.40*school_origin ///
+    + 0.30*nonschool_origin ///
+    + total_context_effect ///
+    + 0.70*family_ability ///
+    + 0.15*female ///
+    + rnormal(0,1)
+
+
+*******************************************************
+* 10. INTERACCIONES PARA LA DESCOMPOSICIÓN
+*******************************************************
+
+gen school_interaction = ///
+    years_exposure * delta_school
+
+gen nonschool_interaction = ///
+    years_exposure * delta_nonschool
+
+
+*******************************************************
+* 11. HORSE-RACE:
+*     ESCUELA Y BARRIO SIMULTÁNEAMENTE
+*******************************************************
+
+reg years_education ///
+    school_interaction ///
+    nonschool_interaction ///
+    i.od_pair ///
+    i.age_move ///
+    female immigrant
+
+scalar beta_school_hat = ///
+    _b[school_interaction]
+
+scalar beta_nonschool_hat = ///
+    _b[nonschool_interaction]
+
+
+*******************************************************
+* 12. EFECTO TOTAL Y SHARES ESTIMADOS
+*******************************************************
+
+scalar beta_total_hat = ///
+    beta_school_hat + beta_nonschool_hat
+
+scalar share_school_hat = ///
+    beta_school_hat / beta_total_hat
+
+scalar share_nonschool_hat = ///
+    beta_nonschool_hat / beta_total_hat
+
+
+*******************************************************
+* 13. MOSTRAR RESULTADOS
+*******************************************************
+
+display " "
+display "========================================"
+display "      DESCOMPOSICION - VERDAD"
+display "========================================"
+
+display "Efecto escolar verdadero     = " ///
+    beta_school_true
+
+display "Efecto no escolar verdadero  = " ///
+    beta_nonschool_true
+
+display "Efecto total verdadero       = " ///
+    beta_total_true
+
+display "Share escolar verdadero      = " ///
+    share_school_true
+
+display "Share no escolar verdadero   = " ///
+    share_nonschool_true
+
+
+display " "
+display "========================================"
+display "      DESCOMPOSICION - ESTIMACION"
+display "========================================"
+
+display "Efecto escolar estimado      = " ///
+    beta_school_hat
+
+display "Efecto no escolar estimado   = " ///
+    beta_nonschool_hat
+
+display "Efecto total estimado        = " ///
+    beta_total_hat
+
+display "Share escolar estimado       = " ///
+    share_school_hat
+
+display "Share no escolar estimado    = " ///
+    share_nonschool_hat
+
+display "========================================"
+
+
+*******************************************************
+* 14. GUARDAR BASE
+*******************************************************
+
+capture mkdir "data"
+
+save "data/descomposicion_simulada.dta", replace

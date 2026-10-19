@@ -66,6 +66,8 @@ label variable years_exposure "Años expuesto al destino"
 * 5. CARACTERÍSTICAS INDIVIDUALES
 *******************************************************
 
+gen move_interaction = age_move * delta_quality
+
 gen female = runiform() < 0.5
 gen immigrant = runiform() < 0.20
 
@@ -165,7 +167,7 @@ scalar beta_age = _b[move_interaction]
 display "Coeficiente usando edad de mudanza = " ///
         beta_age
 		
-
+		
 *******************************************************
 * FIGURA: EFECTOS POR EDAD DE MUDANZA
 *******************************************************

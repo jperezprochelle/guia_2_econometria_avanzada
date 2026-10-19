@@ -64,9 +64,7 @@ label variable years_exposure "Años expuesto al destino"
 
 *******************************************************
 * 5. CARACTERÍSTICAS INDIVIDUALES
-*******************************************************
-
-gen move_interaction = age_move * delta_quality
+*******************************************************s
 
 gen female = runiform() < 0.5
 gen immigrant = runiform() < 0.20
@@ -129,3 +127,104 @@ summarize years_education age_move ///
 
 display "Tasa verdadera de convergencia = " ///
         beta_movers_true
+		
+		
+*******************************************************
+* ESTIMACIÓN PRINCIPAL - MOVERS DESIGN
+*******************************************************
+
+reg years_education ///
+    c.years_exposure#c.delta_quality ///
+    i.od_pair ///
+    i.age_move ///
+    female immigrant
+
+scalar beta_movers = ///
+    _b[c.years_exposure#c.delta_quality]
+
+display "----------------------------------------"
+display "MOVERS DESIGN"
+display "Tasa verdadera = " beta_movers_true
+display "Tasa estimada  = " beta_movers
+display "----------------------------------------"
+
+*******************************************************
+* PARAMETRIZACIÓN CON EDAD DE MUDANZA
+*******************************************************
+
+gen move_interaction = age_move*delta_quality
+
+reg years_education ///
+    move_interaction ///
+    i.od_pair ///
+    i.age_move ///
+    female immigrant
+
+scalar beta_age = _b[move_interaction]
+
+display "Coeficiente usando edad de mudanza = " ///
+        beta_age
+		
+		
+*******************************************************
+* FIGURA: EFECTOS POR EDAD DE MUDANZA
+*******************************************************
+
+* Interactuar delta_quality con cada edad de mudanza
+reg years_education ///
+    c.delta_quality#i.age_move ///
+    i.od_pair ///
+    i.age_move ///
+    female immigrant
+
+*******************************************************
+* Guardar coeficientes
+*******************************************************
+
+preserve
+
+clear
+set obs 9
+
+gen age_move = _n + 6
+gen coef = .
+gen se = .
+
+forvalues a = 7/15 {
+
+    local row = `a' - 6
+
+    replace coef = ///
+        _b[`a'.age_move#c.delta_quality] ///
+        in `row'
+
+    replace se = ///
+        _se[`a'.age_move#c.delta_quality] ///
+        in `row'
+}
+
+gen ci_low  = coef - 1.96*se
+gen ci_high = coef + 1.96*se
+
+
+*******************************************************
+* GRÁFICO
+*******************************************************
+
+twoway ///
+    (rcap ci_low ci_high age_move) ///
+    (scatter coef age_move) ///
+    (lfit coef age_move), ///
+    yline(0, lpattern(dash)) ///
+    xtitle("Edad al momento de mudanza") ///
+    ytitle("Efecto de la calidad del destino") ///
+    title("Efectos de exposición según edad de mudanza") ///
+    legend(off)
+
+capture mkdir "figures"
+
+graph export ///
+    "figures/movers_age_effects.png", ///
+    replace
+
+restoregen move 
