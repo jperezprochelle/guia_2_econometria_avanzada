@@ -18,7 +18,7 @@ set seed 2026
 *******************************************************
 
 * Número de estudiantes
-set obs 10000
+set obs 50000
 
 * Identificador individual
 gen id = _n
@@ -51,6 +51,7 @@ gen distance = runiform(-1,1)
 * HighSide = 1 si vive del lado asociado
 * a la escuela de mayor calidad
 gen highside = (distance >= 0)
+gen distance_high = distance*highside
 
 label variable distance "Distancia relativa a la frontera"
 label variable highside "Lado de escuela asignada de mayor calidad"

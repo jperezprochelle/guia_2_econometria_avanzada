@@ -18,7 +18,7 @@ set seed 2026
 *******************************************************
 
 * Número de estudiantes
-set obs 10000
+set obs 50000
 
 * Identificador individual
 gen id = _n

@@ -1,0 +1,146 @@
+*******************************************************
+* SIMULACIÓN - LALIBERTÉ (2021)
+* 02_rd_iv.do
+*
+* Objetivo:
+* Comparar una estimación OLS ingenua con una
+* estrategia Spatial RD-IV.
+*******************************************************
+
+clear all
+set more off
+
+use "data/datos_simulados.dta", clear
+
+
+*******************************************************
+* 1. PARÁMETRO VERDADERO
+*******************************************************
+
+scalar beta_true = 0.60
+
+display "----------------------------------------"
+display "EFECTO CAUSAL VERDADERO = " beta_true
+display "----------------------------------------"
+
+
+*******************************************************
+* 2. OLS INGENUO
+*******************************************************
+
+reg years_education high_quality_school female immigrant
+
+scalar beta_ols = _b[high_quality_school]
+
+display "OLS ingenuo = " beta_ols
+
+
+*******************************************************
+* 3. FIRST STAGE
+*******************************************************
+
+reg high_quality_school ///
+    highside ///
+    distance ///
+    distance_high ///
+    female immigrant
+
+scalar first_stage = _b[highside]
+
+display "First stage = " first_stage
+
+
+*******************************************************
+* 4. REDUCED FORM
+*******************************************************
+
+reg years_education ///
+    highside ///
+    distance ///
+    distance_high ///
+    female immigrant
+
+scalar reduced_form = _b[highside]
+
+display "Reduced form = " reduced_form
+
+
+*******************************************************
+* 5. RD-IV / 2SLS
+*******************************************************
+
+ivregress 2sls years_education ///
+    female immigrant ///
+    distance distance_high ///
+    (high_quality_school = highside)
+
+scalar beta_iv = _b[high_quality_school]
+
+display "RD-IV = " beta_iv
+
+
+*******************************************************
+* 6. COMPARACIÓN DE ESTIMADORES
+*******************************************************
+
+display "----------------------------------------"
+display "COMPARACIÓN"
+display "Verdad       = " beta_true
+display "OLS ingenuo  = " beta_ols
+display "RD-IV        = " beta_iv
+display "----------------------------------------"
+
+display "Sesgo absoluto OLS = " abs(beta_ols-beta_true)
+display "Sesgo absoluto IV  = " abs(beta_iv-beta_true)
+
+*******************************************************
+* 7. FIGURAS RD
+*******************************************************
+
+capture mkdir "figures"
+
+preserve
+
+* Crear bins de distancia de ancho 0.05
+egen distance_bin = cut(distance), ///
+    at(-1(0.05)1.0001)
+
+collapse ///
+    (mean) high_quality_school years_education ///
+    (mean) distance, ///
+    by(distance_bin highside)
+
+*******************************************************
+* FIGURA 1: FIRST STAGE
+*******************************************************
+
+twoway ///
+    (scatter high_quality_school distance) ///
+    (lfit high_quality_school distance if distance < 0) ///
+    (lfit high_quality_school distance if distance >= 0), ///
+    xline(0, lpattern(dash)) ///
+    xtitle("Distancia relativa a la frontera") ///
+    ytitle("Probabilidad de asistir a escuela de alta calidad") ///
+    title("First stage: discontinuidad en calidad escolar") ///
+    legend(off)
+
+graph export "figures/first_stage_rd.png", replace
+
+
+*******************************************************
+* FIGURA 2: REDUCED FORM
+*******************************************************
+
+twoway ///
+    (scatter years_education distance) ///
+    (lfit years_education distance if distance < 0) ///
+    (lfit years_education distance if distance >= 0), ///
+    xline(0, lpattern(dash)) ///
+    xtitle("Distancia relativa a la frontera") ///
+    ytitle("Años de educación") ///
+    title("Reduced form: discontinuidad en educación") ///
+    legend(off)
+
+graph export "figures/reduced_form_rd.png", replace
+
+restore
